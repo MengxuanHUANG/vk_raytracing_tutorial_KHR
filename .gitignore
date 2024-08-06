@@ -2,3 +2,4 @@
 /build/*
 /out/build/x64-Debug
 /.vs
+/out
