@@ -381,6 +381,9 @@ void HelloVulkan::destroyResources()
   vkDestroyFramebuffer(m_device, m_offscreenFramebuffer, nullptr);
 
   m_alloc.deinit();
+
+  // #VKRay
+  m_rtBuilder.destroy();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -636,4 +639,24 @@ void HelloVulkan::createBottomLevelAS()
     }
 
     m_rtBuilder.buildBlas(allBlas, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
+}
+
+void HelloVulkan::createTopLevelAS() 
+{
+    std::vector<VkAccelerationStructureInstanceKHR> tlas;
+    tlas.reserve(m_instances.size());
+
+    for (const HelloVulkan::ObjInstance& inst : m_instances)
+    {
+        VkAccelerationStructureInstanceKHR rayInst{};
+        rayInst.transform = nvvk::toTransformMatrixKHR(inst.transform); // Position of the instance
+        rayInst.instanceCustomIndex = inst.objIndex; // gl_InstanceCustomIndexEXT
+        rayInst.accelerationStructureReference = m_rtBuilder.getBlasDeviceAddress(inst.objIndex);
+        rayInst.flags                          = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        rayInst.mask                           = 0xFF; //  Only be hit if rayMask & instance.mask != 0
+        rayInst.instanceShaderBindingTableRecordOffset = 0; // We will use the same hit group for all objects
+        tlas.emplace_back(rayInst);
+    }
+
+    m_rtBuilder.buildTlas(tlas, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
 }

@@ -131,4 +131,5 @@ public:
   void initRayTracing();
   auto objectToVkGeometryKHR(const ObjModel& model);
   void createBottomLevelAS();
+  void createTopLevelAS();
 };
