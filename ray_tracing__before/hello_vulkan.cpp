@@ -660,3 +660,9 @@ void HelloVulkan::createTopLevelAS()
 
     m_rtBuilder.buildTlas(tlas, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
 }
+
+
+
+void HelloVulkan::createRtDescriptorSet() {
+
+}

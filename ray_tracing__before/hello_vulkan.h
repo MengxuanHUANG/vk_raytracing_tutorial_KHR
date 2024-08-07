@@ -132,4 +132,10 @@ public:
   auto objectToVkGeometryKHR(const ObjModel& model);
   void createBottomLevelAS();
   void createTopLevelAS();
+
+  void createRtDescriptorSet();
+  nvvk::DescriptorSetBindings m_rtDescSetLayoutBind;
+  VkDescriptorPool            m_rtDescPool;
+  VkDescriptorSetLayout       m_rtDescSetLayout;
+  VkDescriptorSet             m_rtDescSet;
 };
