@@ -125,18 +125,28 @@ public:
   VkFormat                    m_offscreenColorFormat{VK_FORMAT_R32G32B32A32_SFLOAT};
   VkFormat                    m_offscreenDepthFormat{VK_FORMAT_X8_D24_UNORM_PACK32};
 
-  // # VKRay
+  // #VKRay
   nvvk::RaytracingBuilderKHR m_rtBuilder;
 
   void initRayTracing();
+  // #VRay acceleration structure
   auto objectToVkGeometryKHR(const ObjModel& model);
   void createBottomLevelAS();
   void createTopLevelAS();
-
+  // #VRay descriptorSet
   void createRtDescriptorSet();
   void updateRtDescriptorSet();
   nvvk::DescriptorSetBindings m_rtDescSetLayoutBind;
   VkDescriptorPool            m_rtDescPool;
   VkDescriptorSetLayout       m_rtDescSetLayout;
   VkDescriptorSet             m_rtDescSet;
+
+  // #VRay shaders
+  void createRtPipeline();
+
+  std::vector<VkRayTracingShaderGroupCreateInfoKHR> m_rtShaderGroups;
+  VkPipelineLayout                                  m_rtPipelineLayout;
+  VkPipeline                                        m_rtPipeline;
+  // Push constant for ray tracer
+  PushConstantRay                                   m_pcRay{};
 };

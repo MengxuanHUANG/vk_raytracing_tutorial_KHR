@@ -177,6 +177,7 @@ int main(int argc, char** argv)
   helloVk.createBottomLevelAS();
   helloVk.createTopLevelAS();
   helloVk.createRtDescriptorSet();
+  helloVk.createRtPipeline();
 
   helloVk.createPostDescriptor();
   helloVk.createPostPipeline();
