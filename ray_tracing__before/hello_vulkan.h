@@ -149,4 +149,16 @@ public:
   VkPipeline                                        m_rtPipeline;
   // Push constant for ray tracer
   PushConstantRay                                   m_pcRay{};
+
+  // Shader Binding Table
+  void createRtShaderBindingTable();
+
+  nvvk::Buffer                      m_rtSBTBuffer;
+  VkStridedDeviceAddressRegionKHR   m_rgenRegion{};
+  VkStridedDeviceAddressRegionKHR   m_missRegion{};
+  VkStridedDeviceAddressRegionKHR   m_hitRegion{};
+  VkStridedDeviceAddressRegionKHR   m_callRegion{};
+
+  // Ray trace
+  void raytrace(const VkCommandBuffer& cmdBuffer, const glm::vec4& clearColor);
 };

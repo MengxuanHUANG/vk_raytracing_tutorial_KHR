@@ -387,6 +387,7 @@ void HelloVulkan::destroyResources()
   // #VKRay
   vkDestroyPipeline(m_device, m_rtPipeline, nullptr);
   vkDestroyPipelineLayout(m_device, m_rtPipelineLayout, nullptr);
+  m_alloc.destroy(m_rtSBTBuffer);
 
   // #VKRay
   m_rtBuilder.destroy();
@@ -803,4 +804,110 @@ void HelloVulkan::createRtPipeline()
     {
         vkDestroyShaderModule(m_device, stage.module, nullptr);
     }
+}
+
+
+
+//--------------------------------------------------------------------------------------------------
+// The Shader Binding Table (SBT)
+// - getting all shader handles and write them in a SBT buffer
+// - Besides exception, this could be always done like this
+//
+void HelloVulkan::createRtShaderBindingTable()
+{
+    uint32_t missCount{1};
+    uint32_t hitCount{1};
+    auto     handleCount = 1 + missCount + hitCount;
+    uint32_t handleSize  = m_rtProperties.shaderGroupHandleSize;
+
+    // The SBT (buffer) need to have starting groups to be aligned and handles in the group to be aligned.
+    uint32_t handleSizeAligned = nvh::align_up(handleSize, m_rtProperties.shaderGroupHandleAlignment);
+
+    m_rgenRegion.stride = nvh::align_up(handleSizeAligned, m_rtProperties.shaderGroupBaseAlignment);
+    m_rgenRegion.size   = m_rgenRegion.stride; // The size member of pRayGenShaderBindingTable must be equal to its stride member
+    m_missRegion.stride = handleSizeAligned;
+    m_missRegion.size   = nvh::align_up(missCount * handleSizeAligned, m_rtProperties.shaderGroupBaseAlignment);
+    m_hitRegion.stride  = handleSizeAligned;
+    m_hitRegion.size    = nvh::align_up(hitCount * handleSizeAligned, m_rtProperties.shaderGroupBaseAlignment);
+
+    // Get the shader group handles
+    uint32_t dataSize = handleCount * handleSize;
+    std::vector<uint8_t> handles(dataSize);
+    auto result = vkGetRayTracingShaderGroupHandlesKHR(m_device, m_rtPipeline, 0, handleCount, dataSize, handles.data());
+    assert(result == VK_SUCCESS);
+
+    // Allocate a buffer for storing the SBT.
+    VkDeviceSize sbtSize = m_rgenRegion.size + m_missRegion.size + m_hitRegion.size + m_callRegion.size;
+    m_rtSBTBuffer = m_alloc.createBuffer(sbtSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+                                                      | VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    m_debug.setObjectName(m_rtSBTBuffer.buffer, std::string("SBT"));
+
+    // Find the SBT addresses of each group
+    VkBufferDeviceAddressInfo info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, nullptr, m_rtSBTBuffer.buffer};
+    VkDeviceAddress           sbtAddress = vkGetBufferDeviceAddress(m_device, &info);
+    m_rgenRegion.deviceAddress           = sbtAddress;
+    m_missRegion.deviceAddress           = sbtAddress + m_rgenRegion.size;
+    m_hitRegion.deviceAddress            = sbtAddress + m_rgenRegion.size + m_missRegion.size;
+
+    // Helper to retrieve the handle data
+    auto getHandle = [&](int i) { return handles.data() + i * handleSize; };
+
+    // Map the SBT buffer and write in the handles.
+    auto* pSBTBuffer = reinterpret_cast<uint8_t*>(m_alloc.map(m_rtSBTBuffer));
+    uint8_t* pData{nullptr};
+    uint32_t handleIdx{0};
+
+    // Raygen
+    pData = pSBTBuffer;
+    memcpy(pData, getHandle(handleIdx++), handleSize);
+
+    // Miss
+    pData = pSBTBuffer + m_rgenRegion.size;
+    for (uint32_t c = 0; c < missCount; c++)
+    {
+      memcpy(pData, getHandle(handleIdx++), handleSize);
+      pData += m_missRegion.stride;
+    }
+
+    // Hit 
+    pData = pSBTBuffer + m_rgenRegion.size + m_missRegion.size;
+    for(uint32_t c = 0; c < hitCount; c++)
+    {
+      memcpy(pData, getHandle(handleIdx++), handleSize);
+      pData += m_hitRegion.stride;
+    }
+
+    // Finalize and clean up
+    m_alloc.unmap(m_rtSBTBuffer);
+    m_alloc.finalizeAndReleaseStaging();
+}
+
+
+
+//--------------------------------------------------------------------------------------------------
+// Ray Tracing the scene
+//
+void HelloVulkan::raytrace(const VkCommandBuffer& cmdBuffer, const glm::vec4& clearColor) 
+{
+  m_debug.beginLabel(cmdBuffer, "Ray trace");
+
+  // Initializing push constant values
+  m_pcRay.clearColor    = clearColor;
+  m_pcRay.lightPosition = m_pcRaster.lightPosition;
+  m_pcRay.lightIntensity = m_pcRaster.lightIntensity;
+  m_pcRay.lightType      = m_pcRaster.lightType;
+
+  std::vector<VkDescriptorSet> descSets{m_rtDescSet, m_descSet};
+
+  vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_rtPipeline);
+  vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_rtPipelineLayout, 0,
+                          (uint32_t)descSets.size(), descSets.data(), 0, nullptr);
+
+  vkCmdPushConstants(cmdBuffer, m_rtPipelineLayout, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR,
+                     0, sizeof(PushConstantRay), &m_pcRay);
+
+  vkCmdTraceRaysKHR(cmdBuffer, &m_rgenRegion, &m_missRegion, &m_hitRegion, &m_callRegion, m_size.width, m_size.height, 1);
+  m_debug.endLabel(cmdBuffer);
 }
