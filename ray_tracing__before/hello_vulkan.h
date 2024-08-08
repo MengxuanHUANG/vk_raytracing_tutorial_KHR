@@ -134,6 +134,7 @@ public:
   void createTopLevelAS();
 
   void createRtDescriptorSet();
+  void updateRtDescriptorSet();
   nvvk::DescriptorSetBindings m_rtDescSetLayoutBind;
   VkDescriptorPool            m_rtDescPool;
   VkDescriptorSetLayout       m_rtDescSetLayout;
