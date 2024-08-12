@@ -19,9 +19,11 @@ layout(buffer_reference, scalar) buffer Vertices { Vertex v[]; }; // Positions o
 layout(buffer_reference, scalar) buffer Indices { ivec3 i[]; }; // Triangle Indices
 layout(buffer_reference, scalar) buffer Materials { WaveFrontMaterial m[]; }; // Array of all materials on an object
 layout(buffer_reference, scalar) buffer MatIndices { int i []; }; // Material ID for each triangles
+layout(set = 0, binding = eTlas) uniform accelerationStructureEXT topLevelAS;
 layout(set = 1, binding = eObjDescs, scalar) buffer ObjDesc_ { ObjDesc i[]; } objDesc;
 layout(set = 1, binding = eTextures) uniform sampler2D textureSamplers[];
 
+layout(location = 1) rayPayloadEXT bool isShadowed;
 layout(push_constant) uniform _PushConstantRay
 {
   PushConstantRay pcRay;
@@ -99,9 +101,43 @@ void main()
 	  vec2 texCoord = barycentricInterpolationV2(uvs, barycentricsCoord);
 	  diffuse *= texture(textureSamplers[nonuniformEXT(textureId)], texCoord).xyz;
 	}
+	vec3 specular = vec3(0.f);
+	float attenuation = 1.f;
 
-	// Specular
-	vec3 specular = computeSpecular(mat, gl_WorldRayDirectionEXT, light_result.xyz, nor);
+	// Tracing shadow ray only if the light is visible from the surface
+	if(dot(nor, light_result.xyz) > 0) 
+	{
+		float tMin   = 0.001;
+		float tMax   = 100000.f;
+		vec3  origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT; //worldPos + nor * 0.0001f;
+		vec3  rayDir = light_result.xyz;
+		uint  flags = gl_RayFlagsTerminateOnFirstHitEXT | 
+						gl_RayFlagsOpaqueEXT | 
+						gl_RayFlagsSkipClosestHitShaderEXT;
+		isShadowed = true;
+		traceRayEXT(topLevelAS,  // acceleration structure
+            flags,       // rayFlags
+            0xFF,        // cullMask
+            0,           // sbtRecordOffset
+            0,           // sbtRecordStride
+            1,           // missIndex
+            origin,      // ray origin
+            tMin,        // ray min range
+            rayDir,      // ray direction
+            tMax,        // ray max range
+            1            // payload (location = 1)
+		);
 
-	prd.hitValue = vec3(light_result.w * (diffuse + specular));;
+		if(isShadowed)
+		{
+			attenuation = 0.3;
+		}
+		else
+		{
+		  // Specular
+		  specular = computeSpecular(mat, gl_WorldRayDirectionEXT, light_result.xyz, nor);
+		}
+	}
+
+	prd.hitValue = vec3(light_result.w * attenuation * (diffuse + specular));;
 }
