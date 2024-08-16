@@ -20,10 +20,7 @@
 
 #include <sstream>
 
-
-#define STB_IMAGE_IMPLEMENTATION
-#include "obj_loader.h"
-#include "stb_image.h"
+// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
 
 #include "hello_vulkan.h"
 #include "nvh/alignment.hpp"
@@ -36,6 +33,11 @@
 #include "nvvk/renderpasses_vk.hpp"
 #include "nvvk/shaders_vk.hpp"
 #include "nvvk/buffers_vk.hpp"
+
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "tiny_gltf.h"
 
 extern std::vector<std::string> defaultSearchPaths;
 
@@ -170,7 +172,7 @@ void HelloVulkan::createGraphicsPipeline()
   gpb.depthStencilState.depthTestEnable = true;
   gpb.addShader(nvh::loadFile("spv/vert_shader.vert.spv", true, paths, true), VK_SHADER_STAGE_VERTEX_BIT);
   gpb.addShader(nvh::loadFile("spv/frag_shader.frag.spv", true, paths, true), VK_SHADER_STAGE_FRAGMENT_BIT);
-  gpb.addBindingDescription({0, sizeof(VertexObj)});
+  /* gpb.addBindingDescription({0, sizeof(VertexObj)});
   gpb.addAttributeDescriptions({
       {0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(VertexObj, pos))},
       {1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(VertexObj, nrm))},
@@ -180,13 +182,14 @@ void HelloVulkan::createGraphicsPipeline()
 
   m_graphicsPipeline = gpb.createPipeline();
   m_debug.setObjectName(m_graphicsPipeline, "Graphics");
+  */
 }
 
 //--------------------------------------------------------------------------------------------------
 // Loading the OBJ file and setting up all buffers
 //
 void HelloVulkan::loadModel(const std::string& filename, glm::mat4 transform)
-{
+{ /*
   LOGI("Loading File:  %s \n", filename.c_str());
   ObjLoader loader;
   loader.loadModel(filename);
@@ -242,6 +245,7 @@ void HelloVulkan::loadModel(const std::string& filename, glm::mat4 transform)
   // Keeping the obj host model and device description
   m_objModel.emplace_back(model);
   m_objDesc.emplace_back(desc);
+*/
 }
 
 
@@ -344,6 +348,62 @@ void HelloVulkan::createTextureImages(const VkCommandBuffer& cmdBuf, const std::
       stbi_image_free(stbi_pixels);
     }
   }
+}
+
+//--------------------------------------------------------------------------------------------------
+// Creating all textures and samplers
+//
+void HelloVulkan::createTextureImages(const VkCommandBuffer& cmdBuf, tinygltf::Model const& model) 
+{
+    VkSamplerCreateInfo samplerCreateInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    
+    samplerCreateInfo.minFilter  = VK_FILTER_LINEAR;
+    samplerCreateInfo.magFilter  = VK_FILTER_LINEAR;
+    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerCreateInfo.maxLod     = FLT_MAX;
+
+    VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
+
+    auto addDefaultTextureFunc = [&]() {
+        // make dummy image(1, 1), needs as we cannot have an empty array
+        nvvk::ScopeCommandBuffer cmdBuf(m_device, m_graphicsQueueIndex);
+        std::array<uint8_t, 4>   white{255, 255, 255, 255};
+
+        VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        m_textures.emplace_back(m_alloc.createTexture(cmdBuf, 4, white.data(), nvvk::makeImage2DCreateInfo(VkExtent2D{1, 1}), sampler));
+        m_debug.setObjectName(m_textures.back().image, "dummy");
+    };
+
+    if (model.images.empty())
+    {
+        addDefaultTextureFunc();
+        return;
+    }
+
+    m_textures.reserve(m_textures.size() + model.images.size());
+    
+    for (size_t i = 0; i < model.images.size(); ++i)
+    {
+        tinygltf::Image const&  gltfimage   = model.images[i];
+        void const*             buffer      = &gltfimage.image[0];
+        VkDeviceSize            size        = gltfimage.image.size();
+        VkExtent2D              extent      = VkExtent2D{(uint32_t)gltfimage.width, (uint32_t)gltfimage.height};
+
+        // If texture is empty add default texture
+        if (size == 0 || gltfimage.width == -1 || gltfimage.height == -1)
+        {
+            addDefaultTextureFunc();
+            continue;
+        }
+
+        VkImageCreateInfo imageCreateInfo = nvvk::makeImage2DCreateInfo(extent, format, VK_IMAGE_USAGE_SAMPLED_BIT, true);
+        nvvk::Image image = m_alloc.createImage(cmdBuf, size, buffer, imageCreateInfo);
+        nvvk::cmdGenerateMipmaps(cmdBuf, image.image, format, extent, imageCreateInfo.mipLevels);
+        VkImageViewCreateInfo imgViewCreateInfo = nvvk::makeImageViewCreateInfo(image.image, imageCreateInfo);
+        m_textures.emplace_back(m_alloc.createTexture(image, imgViewCreateInfo, samplerCreateInfo));
+
+        m_debug.setObjectName(m_textures.back().image, std::string("texture" + std::to_string(i)));
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -611,7 +671,7 @@ auto HelloVulkan::objectToVkGeometryKHR(const ObjModel& model)
     VkAccelerationStructureGeometryTrianglesDataKHR triangles{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR};
     triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
     triangles.vertexData.deviceAddress = vertexAddr;
-    triangles.vertexStride             = sizeof(VertexObj);
+    //triangles.vertexStride             = sizeof(VertexObj);
 
     // Describe index data (32-bit unsigned int)
     triangles.indexType = VK_INDEX_TYPE_UINT32;
@@ -645,10 +705,10 @@ void HelloVulkan::createBottomLevelAS()
 {
     // BLAS - Storing each primitive in a geometry
     std::vector<nvvk::RaytracingBuilderKHR::BlasInput> allBlas;
-    allBlas.reserve(m_objModel.size());
-    for (const auto& obj : m_objModel)
+    allBlas.reserve(m_gltfScene.m_primMeshes.size());
+    for(auto const& mesh : m_gltfScene.m_primMeshes)
     {
-        auto blas = objectToVkGeometryKHR(obj);
+        nvvk::RaytracingBuilderKHR::BlasInput blas = PrimitiveToVkGeometryKHR(mesh);
 
         // we could add more geometry in each Blas, but we add only one for now
         allBlas.emplace_back(blas);
@@ -662,12 +722,12 @@ void HelloVulkan::createTopLevelAS()
     std::vector<VkAccelerationStructureInstanceKHR> tlas;
     tlas.reserve(m_instances.size());
 
-    for (const HelloVulkan::ObjInstance& inst : m_instances)
+    for(nvh::GltfNode const& node : m_gltfScene.m_nodes)
     {
         VkAccelerationStructureInstanceKHR rayInst{};
-        rayInst.transform = nvvk::toTransformMatrixKHR(inst.transform); // Position of the instance
-        rayInst.instanceCustomIndex = inst.objIndex; // gl_InstanceCustomIndexEXT
-        rayInst.accelerationStructureReference = m_rtBuilder.getBlasDeviceAddress(inst.objIndex);
+        rayInst.transform = nvvk::toTransformMatrixKHR(node.worldMatrix); // Position of the instance
+        rayInst.instanceCustomIndex = node.primMesh; // gl_InstanceCustomIndexEXT
+        rayInst.accelerationStructureReference = m_rtBuilder.getBlasDeviceAddress(node.primMesh);
         rayInst.flags                          = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
         rayInst.mask                           = 0xFF; //  Only be hit if rayMask & instance.mask != 0
         rayInst.instanceShaderBindingTableRecordOffset = 0; // We will use the same hit group for all objects
@@ -932,4 +992,132 @@ void HelloVulkan::raytrace(const VkCommandBuffer& cmdBuffer, const glm::vec4& cl
 
   vkCmdTraceRaysKHR(cmdBuffer, &m_rgenRegion, &m_missRegion, &m_hitRegion, &m_callRegion, m_size.width, m_size.height, 1);
   m_debug.endLabel(cmdBuffer);
+}
+
+void HelloVulkan::LoadScene(std::string const& filename) 
+{
+    tinygltf::Model       tmodel;
+    tinygltf::TinyGLTF    tcontext;
+    std::string           warn, error;
+
+    if (!tcontext.LoadASCIIFromFile(&tmodel, &error, &warn, filename))
+    {
+      assert(!"Error while loading scene");
+    }
+
+    m_gltfScene.importMaterials(tmodel);
+    m_gltfScene.importDrawableNodes(tmodel, nvh::GltfAttributes::Normal | nvh::GltfAttributes::Texcoord_0);
+
+    // Create the buffer on Device and copy vertices, indices and materials
+    nvvk::CommandPool cmdBufGet(m_device, m_graphicsQueueIndex);
+    VkCommandBuffer   cmdBuf = cmdBufGet.createCommandBuffer();
+
+    m_vertexBuffer = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_positions, 
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+            | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+    
+    m_indexBuffer = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_indices,
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+                | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+
+    m_normalBuffer = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_normals,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+
+    m_uvBuffer = m_alloc.createBuffer(cmdBuf, m_gltfScene.m_texcoords0,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+
+    // copying all materials, only the elements we need
+    std::vector<GltfShaderMaterial> shaderMaterials;
+    for (nvh::GltfMaterial const& mat : m_gltfScene.m_materials)
+    {
+        shaderMaterials.emplace_back(GltfShaderMaterial{
+            mat.baseColorFactor, 
+            mat.emissiveFactor, 
+            mat.baseColorTexture
+        });
+    }
+
+    m_materialBuffer = m_alloc.createBuffer(cmdBuf, shaderMaterials,
+                                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+
+    // the following is used to find the primitive mesh information in th CHIT
+    std::vector<PrimMeshInfo> primLookup;
+    for (nvh::GltfPrimMesh const& primMesh : m_gltfScene.m_primMeshes)
+    {
+        primLookup.push_back({
+            primMesh.firstIndex, 
+            primMesh.vertexOffset, 
+            primMesh.materialIndex
+        });
+    }
+
+    m_rtPrimLookup = m_alloc.createBuffer(cmdBuf, primLookup,
+                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+    
+    // create address
+    SceneDesc sceneDesc;
+    sceneDesc.vertexAddress     = nvvk::getBufferDeviceAddress(m_device, m_vertexBuffer.buffer);
+    sceneDesc.indexAddress      = nvvk::getBufferDeviceAddress(m_device, m_indexBuffer.buffer);
+    sceneDesc.normalAddress     = nvvk::getBufferDeviceAddress(m_device, m_normalBuffer.buffer);
+    sceneDesc.uvAddress         = nvvk::getBufferDeviceAddress(m_device, m_uvBuffer.buffer);
+    sceneDesc.materialAddress   = nvvk::getBufferDeviceAddress(m_device, m_materialBuffer.buffer);
+    sceneDesc.primInfoAddress   = nvvk::getBufferDeviceAddress(m_device, m_primInfo.buffer);
+
+    m_sceneDesc = m_alloc.createBuffer(cmdBuf, sizeof(sceneDesc), &sceneDesc,
+                                       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+
+    // Create all textures found
+    createTextureImages(cmdBuf, tmodel);
+    cmdBufGet.submitAndWait(cmdBuf);
+    m_alloc.finalizeAndReleaseStaging();
+
+    NAME_VK(m_vertexBuffer.buffer);
+    NAME_VK(m_indexBuffer.buffer);
+    NAME_VK(m_normalBuffer.buffer);
+    NAME_VK(m_uvBuffer.buffer);
+    NAME_VK(m_materialBuffer.buffer);
+    NAME_VK(m_primInfo.buffer);
+    NAME_VK(m_sceneDesc.buffer);
+}
+
+nvvk::RaytracingBuilderKHR::BlasInput HelloVulkan::PrimitiveToVkGeometryKHR(const nvh::GltfPrimMesh& prim)
+{
+  // BLAS builder requires raw device addresses
+  VkDeviceAddress vertexAddr = nvvk::getBufferDeviceAddress(m_device, m_vertexBuffer.buffer);
+  VkDeviceAddress indexAddr  = nvvk::getBufferDeviceAddress(m_device, m_indexBuffer.buffer);
+
+  uint32_t maxPrimitiveCount = prim.indexCount / 3;
+
+  // Describe buffer as array of VertexObj
+  VkAccelerationStructureGeometryTrianglesDataKHR triangles{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR};
+  triangles.vertexFormat             = VK_FORMAT_R32G32B32_SFLOAT;
+  triangles.vertexData.deviceAddress = vertexAddr;
+  triangles.vertexStride             = sizeof(glm::vec3);
+
+  // Describe index data (32-bit unsigned int)
+  triangles.indexType               = VK_INDEX_TYPE_UINT32;
+  triangles.indexData.deviceAddress = indexAddr;
+  // Indicate identitytransform by setting transformData to null device pointer
+  // triangles.transformData = {}
+  triangles.maxVertex = prim.vertexCount - 1;
+
+  // Identify the above data as containing opaque triangles.
+  VkAccelerationStructureGeometryKHR asGeom{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
+  asGeom.geometryType       = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+  asGeom.flags              = VK_GEOMETRY_OPAQUE_BIT_KHR;
+  asGeom.geometry.triangles = triangles;
+
+  // The entire array will be used to build the BLAS
+  VkAccelerationStructureBuildRangeInfoKHR offset;
+  offset.firstVertex     = prim.vertexOffset;
+  offset.primitiveCount  = prim.indexCount / 3;
+  offset.primitiveOffset = prim.firstIndex * sizeof(uint32_t);
+  offset.transformOffset = 0;
+
+  // Our blas is made from only one geometry. but could be made of many geometries
+  nvvk::RaytracingBuilderKHR::BlasInput input;
+  input.asGeometry.emplace_back(asGeom);
+  input.asBuildOffsetInfo.emplace_back(offset);
+
+  return input;
 }

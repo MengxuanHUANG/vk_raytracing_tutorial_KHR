@@ -42,7 +42,7 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/media DESTINATION ${OUTPUT_PATH})
 #--------------------------------------------------------------------------------------------------
 # Sub examples
 add_subdirectory(ray_tracing__advance) 
-add_subdirectory(ray_tracing__before) 
+add_subdirectory(ray_tracing_PT) 
 add_subdirectory(ray_tracing__simple)
 
 add_subdirectory(ray_tracing_animation)

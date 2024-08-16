@@ -42,7 +42,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "tiny_gltf.h"
-
 extern std::vector<std::string> defaultSearchPaths;
 
 //--------------------------------------------------------------------------------------------------
@@ -329,6 +328,11 @@ void HelloVulkan::createTextureImages(const VkCommandBuffer& cmdBuf, tinygltf::M
 
     m_debug.setObjectName(m_textures[i].image, std::string("Txt" + std::to_string(i)));
   }
+}
+
+void createTextureImages(const VkCommandBuffer& cmdBuf, tinygltf::Model const& model)
+{
+
 }
 
 //--------------------------------------------------------------------------------------------------

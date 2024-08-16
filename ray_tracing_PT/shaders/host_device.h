@@ -113,5 +113,28 @@ struct WaveFrontMaterial  // See ObjLoader, copy of MaterialObj, could be compre
   int   textureId;
 };
 
+struct PrimMeshInfo
+{
+  uint indexOffset;
+  uint vertexOffset;
+  int  materialIndex;
+};
+
+struct SceneDesc
+{
+  uint64_t vertexAddress;	// Address of the Vertex buffer
+  uint64_t normalAddress;	// Address of the normal buffer
+  uint64_t uvAddress;		// Address of the uv buffer
+  uint64_t indexAddress;	// Address of the triangle indices buffer
+  uint64_t materialAddress; // Address of the Materials buffer (GltfShaderMaterial)
+  uint64_t primInfoAddress; // Address of the mesh primitives buffer (PrimMeshInfo)
+};
+
+struct GltfShaderMaterial
+{
+  vec4 pbrBaseColorFactor;
+  vec3 emissiveFactor;
+  int  pbrBaseColorTexture;
+};
 
 #endif

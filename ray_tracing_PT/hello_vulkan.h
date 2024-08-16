@@ -25,6 +25,7 @@
 #include "nvvk/memallocator_dma_vk.hpp"
 #include "nvvk/resourceallocator_vk.hpp"
 #include "shaders/host_device.h"
+#include "nvh/gltfscene.hpp"
 
 // # VKRay
 #include "nvvk/raytraceKHR_vk.hpp"
@@ -47,6 +48,7 @@ public:
   void createUniformBuffer();
   void createObjDescriptionBuffer();
   void createTextureImages(const VkCommandBuffer& cmdBuf, const std::vector<std::string>& textures);
+  void createTextureImages(const VkCommandBuffer& cmdBuf, tinygltf::Model const& model);
   void updateUniformBuffer(const VkCommandBuffer& cmdBuf);
   void onResize(int /*w*/, int /*h*/) override;
   void destroyResources();
@@ -161,4 +163,17 @@ public:
 
   // Ray trace
   void raytrace(const VkCommandBuffer& cmdBuffer, const glm::vec4& clearColor);
+
+  // GLTF Load Scene
+  nvh::GltfScene m_gltfScene;
+  nvvk::Buffer   m_vertexBuffer;
+  nvvk::Buffer   m_indexBuffer;
+  nvvk::Buffer   m_normalBuffer;
+  nvvk::Buffer   m_uvBuffer;
+  nvvk::Buffer   m_materialBuffer;
+  nvvk::Buffer   m_primInfo;
+  nvvk::Buffer   m_sceneDesc;
+  nvvk::Buffer   m_rtPrimLookup;
+  void LoadScene(std::string const& filename);
+  nvvk::RaytracingBuilderKHR::BlasInput PrimitiveToVkGeometryKHR(const nvh::GltfPrimMesh& prim);
 };

@@ -75,6 +75,5 @@ endforeach(RELEASELIB)
 #
 _finalize_target( ${PROJNAME} )
 
-
 install(FILES ${SPV_OUTPUT} CONFIGURATIONS Release DESTINATION "bin_${ARCH}/${PROJNAME}/spv")
 install(FILES ${SPV_OUTPUT} CONFIGURATIONS Debug DESTINATION "bin_${ARCH}_debug/${PROJNAME}/spv")
